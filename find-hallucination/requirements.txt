@@ -1,0 +1,4 @@
+pygame
+langchain_aws
+boto3
+langgraph
