@@ -43,6 +43,7 @@
           <div class="time-container">
             ⏰ <span class="time-text">{{ elapsedTime.toFixed(0) }} 초</span>
           </div>
+          <div>틀린 문장 5개를 찾아보세요!</div>
           <div class="back-container">
             <button class="nav-btn" @click="goHome">뒤로</button>
           </div>
