@@ -3,6 +3,7 @@ import os
 from enum import Enum
 from typing import List
 
+import sqlite3
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------
+# 순위 저장을 위한 데이터베이스 설정 (SQLite)
+# ---------------------------
+DATABASE = "rankings.db"
+
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rankings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nickname TEXT NOT NULL,
+            keyword TEXT NOT NULL,
+            elapsed_time REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
 # ----------------------------------------------------------------------
 # 1) Pydantic 모델 (LLM JSON 응답 파싱용)
 # ----------------------------------------------------------------------
@@ -50,6 +73,12 @@ class ProblemResponse(BaseModel):
         ...,
         description="right_text의 문장 잘못된 내용으로 교체한 리스트"
     )
+
+# 랭킹 저장 및 조회를 위한 모델
+class RankingRecord(BaseModel):
+    nickname: str
+    keyword: str
+    elapsed_time: float
 
 # ----------------------------------------------------------------------
 # 2) 프롬프트 상수/enum
@@ -246,9 +275,48 @@ async def api_problem(request: Request):
     }
     return result
 
+# ---------------------------
+# 8) 랭킹 저장 API (POST) – 10위 초과 시 하위 기록 삭제
+# ---------------------------
+@app.post("/api/rankings")
+async def save_ranking(record: RankingRecord):
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO rankings (nickname, keyword, elapsed_time) VALUES (?, ?, ?)",
+                   (record.nickname, record.keyword, record.elapsed_time))
+    conn.commit()
+    # 전체 기록을 걸린 시간 순으로 정렬 후, 10위 밖 기록 삭제
+    cursor.execute("SELECT id FROM rankings ORDER BY elapsed_time ASC")
+    rows = cursor.fetchall()
+    if len(rows) > 10:
+        for row in rows[10:]:
+            cursor.execute("DELETE FROM rankings WHERE id = ?", (row[0],))
+        conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
+# ---------------------------
+# 9) 랭킹 조회 API (GET) – 순위, 닉네임, 키워드, 걸린 시간 반환
+# ---------------------------
+@app.get("/api/rankings")
+async def get_rankings():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT nickname, keyword, elapsed_time FROM rankings ORDER BY elapsed_time ASC LIMIT 10")
+    rows = cursor.fetchall()
+    conn.close()
+    rankings_list = []
+    for idx, row in enumerate(rows):
+        rankings_list.append({
+            "rank": idx + 1,
+            "nickname": row[0],
+            "keyword": row[1],
+            "elapsed_time": row[2]
+        })
+    return {"rankings": rankings_list}
 
 # ----------------------------------------------------------------------
-# 8) Uvicorn 실행
+# 10) Uvicorn 실행
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
     import uvicorn

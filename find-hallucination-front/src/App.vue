@@ -10,9 +10,18 @@
         Loading...
       </div>
 
-      <!-- 메인 메뉴: 키워드 선택 -->
+      <!-- 메인 메뉴: 닉네임 입력, 키워드 선택, 랭킹보기 버튼 -->
       <div v-else-if="state === 'mainMenu'" class="main-menu">
         <h1>틀린 글 찾기 챌린지</h1>
+        <!-- 닉네임 입력 -->
+        <div class="nickname-input">
+          <input type="text" v-model="nickname" placeholder="닉네임을 입력하세요" />
+        </div>
+        <!-- 랭킹보기 버튼 -->
+        <div class="ranking-btn-container">
+          <button class="nav-btn" @click="viewRanking">랭킹보기</button>
+        </div>
+        <!-- 키워드 버튼 -->
         <div class="keyword-container">
           <button
               v-for="(keyword, index) in keywords"
@@ -80,6 +89,30 @@
           </button>
         </div>
       </div>
+
+      <!-- 랭킹 화면 -->
+      <div v-else-if="state === 'ranking'" class="ranking">
+        <h1>랭킹</h1>
+        <table class="ranking-table">
+          <thead>
+          <tr>
+            <th>순위</th>
+            <th>닉네임</th>
+            <th>키워드</th>
+            <th>걸린 시간 (초)</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-for="record in rankings" :key="record.rank">
+            <td>{{ record.rank }}</td>
+            <td>{{ record.nickname }}</td>
+            <td>{{ record.keyword }}</td>
+            <td>{{ record.elapsed_time }}</td>
+          </tr>
+          </tbody>
+        </table>
+        <button class="nav-btn" @click="goHome">뒤로</button>
+      </div>
     </div>
   </transition>
 </template>
@@ -119,7 +152,7 @@ function getUniqueColors(num) {
 }
 
 /* --- 게임 관련 상태 --- */
-const state = ref('loading'); // 'loading', 'mainMenu', 'game', 'result'
+const state = ref('loading'); // 'loading', 'mainMenu', 'game', 'result', 'ranking'
 const keywords = ref([]);
 const selectedKeyword = ref('');
 const problem = reactive({
@@ -139,8 +172,14 @@ let timerInterval = null;
 // 키워드 버튼별 색상을 저장할 배열
 const keywordColors = ref([]);
 
-// 배경음악 오디오 엘리먼트 ref
+// 배경음악 엘리먼트 ref
 const bgmAudio = ref(null);
+
+// NEW: 사용자 닉네임
+const nickname = ref("");
+
+// NEW: 랭킹 데이터 저장 (랭킹 화면에서 사용)
+const rankings = ref([]);
 
 // 게임 상태에 따라 배경음악 자동 재생/정지
 watch(state, (newVal) => {
@@ -188,6 +227,11 @@ function fetchKeywords() {
 
 /* --- 게임 시작: 선택한 키워드로 문제 호출 --- */
 function startGame(keyword) {
+  // 닉네임 입력 여부 확인
+  if (!nickname.value.trim()) {
+    alert("닉네임을 입력해주세요.");
+    return;
+  }
   selectedKeyword.value = keyword;
   state.value = 'loading';
   axios
@@ -236,6 +280,19 @@ function submitAnswer() {
       errorIndices.value.includes(idx)
   ).length;
   gameEndTime.value = Date.now();
+  // 정답인 경우 랭킹 저장 API 호출 (닉네임, 키워드, 걸린 시간)
+  if (correctCount.value === totalErrors.value) {
+    const timeTaken = (gameEndTime.value - gameStartTime.value) / 1000;
+    axios.post('http://localhost:5000/api/rankings', {
+      nickname: nickname.value,
+      keyword: selectedKeyword.value,
+      elapsed_time: timeTaken
+    }).then(() => {
+      console.log("Ranking saved");
+    }).catch(err => {
+      console.error("Failed to save ranking", err);
+    });
+  }
   state.value = 'result';
   if (timerInterval) {
     clearInterval(timerInterval);
@@ -274,6 +331,20 @@ function goHome() {
   }
 }
 
+/* --- 랭킹보기: 백엔드에서 순위 데이터 가져오기 --- */
+function viewRanking() {
+  state.value = 'loading';
+  axios.get('http://localhost:5000/api/rankings')
+      .then(response => {
+        rankings.value = response.data.rankings;
+        state.value = 'ranking';
+      })
+      .catch(error => {
+        console.error("Failed to fetch rankings", error);
+        state.value = 'mainMenu';
+      });
+}
+
 onMounted(() => {
   fetchKeywords();
 });
@@ -310,14 +381,14 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* 제목 스타일: 검은색 */
+/* 제목 스타일 */
 h1 {
   font-size: 2.5em;
   margin-bottom: 30px;
   color: #ffffff;
 }
 
-/* 기본 버튼 스타일: 플랫, 외곽선 없음, 단색 (#FC226E), 굵은 타이포, border-radius 20px */
+/* 기본 버튼 스타일 */
 button {
   background: #FC226E;
   color: #FFFFFF;
@@ -334,7 +405,7 @@ button:hover {
   transform: scale(1.03);
 }
 
-/* 상단 바: 좌측에 시간, 우측에 뒤로 버튼 (각각 끝에 딱 붙도록) */
+/* 상단 바 */
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -375,7 +446,7 @@ button:hover {
   transform: scale(1.03);
 }
 
-/* 하단 바: 정답 제출 버튼 중앙 정렬 */
+/* 하단 바 */
 .bottom-bar {
   display: flex;
   justify-content: center;
@@ -385,7 +456,7 @@ button:hover {
   margin: 20px 0;
 }
 
-/* 메인 메뉴 내 키워드 버튼 레이아웃: 세로 정렬 */
+/* 메인 메뉴 내 키워드 버튼 */
 .keyword-container {
   display: flex;
   flex-direction: column;
@@ -394,10 +465,10 @@ button:hover {
 }
 
 .keyword-btn {
-  font-size: 2rem; /* 폰트 크기 5em */
+  font-size: 2rem;
 }
 
-/* 내용 영역: 책 읽는 느낌의 단락 (콘텐츠 패널: 화이트 배경) */
+/* 내용 영역 */
 .content {
   background: #FFFFFF;
   border: 1px solid #ddd;
@@ -421,23 +492,24 @@ button:hover {
 }
 
 .book-sentence.selected {
-  background-color: rgba(255, 79, 119, 0.3); /* #FF4F77 with 30% opacity */
+  background-color: rgba(255, 79, 119, 0.3);
 }
 
 .submit-btn {
   font-size: 2rem;
 }
 
-/* 로딩, 메인 메뉴, 결과 화면 중앙 정렬 */
+/* 로딩, 메인 메뉴, 결과, 랭킹 화면 중앙 정렬 */
 .loading,
 .main-menu,
-.result {
+.result,
+.ranking {
   text-align: center;
   width: 100%;
   max-width: 720px;
 }
 
-/* 결과 화면 스타일: 화이트 배경, 최소한의 그림자 */
+/* 결과 화면 스타일 */
 .result {
   background: #FFFFFF;
   padding: 30px;
@@ -464,5 +536,39 @@ button:hover {
   border: none;
   font-weight: bold;
   border-radius: 20px;
+}
+
+/* 닉네임 입력 */
+.nickname-input {
+  margin-bottom: 20px;
+}
+
+.nickname-input input {
+  padding: 10px;
+  font-size: 1.2rem;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+}
+
+/* 랭킹보기 버튼 컨테이너 */
+.ranking-btn-container {
+  margin-bottom: 50px;
+}
+
+/* 랭킹 테이블 */
+.ranking-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.ranking-table th, .ranking-table td {
+  border: 1px solid #ddd;
+  padding: 10px;
+}
+
+.ranking-table th {
+  background-color: #f2f2f2;
+  color: #343A40;
 }
 </style>
