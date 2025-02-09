@@ -7,7 +7,8 @@
     <div id="app" :key="state">
       <!-- 로딩 화면 -->
       <div v-if="state === 'loading'" class="loading">
-        Loading...
+        LLM을 이용해 문제 생성중...<br>
+        이 과정은 오래 걸릴 수 있습니다. (최대 1분)
       </div>
 
       <!-- 메인 메뉴: 닉네임 입력, 키워드 선택, 랭킹보기 버튼 -->
@@ -204,6 +205,7 @@ function getRandomSample(n, count) {
     indices.splice(randIndex, 1);
   }
   return sample;
+  return sample.sort((a, b) => a - b);
 }
 
 /* --- API 호출: 키워드 목록 가져오기 --- */
