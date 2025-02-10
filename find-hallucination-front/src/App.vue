@@ -35,7 +35,6 @@
           </button>
         </div>
       </div>
-
       <!-- 게임 화면 -->
       <div v-else-if="state === 'game'" class="game">
         <!-- 상단 바: 좌측에 시간, 우측에 뒤로 버튼 -->
@@ -43,7 +42,7 @@
           <div class="time-container">
             ⏰ <span class="time-text">{{ elapsedTime.toFixed(0) }} 초</span>
           </div>
-          <div>틀린 문장 5개를 찾아보세요!</div>
+          <div class="subject-container"><span>{{ storyIdea }}<br>위 주제에 대해 틀린 문장 5개를 찾아보세요!</span></div>
           <div class="back-container">
             <button class="nav-btn" @click="goHome">뒤로</button>
           </div>
@@ -161,6 +160,7 @@ const problem = reactive({
   right_text: [],
   wrong_text: []
 });
+let storyIdea = ref("주제")
 const errorIndices = ref([]);
 const modifiedList = ref([]);
 const selectedIndices = ref([]);
@@ -205,7 +205,6 @@ function getRandomSample(n, count) {
     sample.push(indices[randIndex]);
     indices.splice(randIndex, 1);
   }
-  return sample;
   return sample.sort((a, b) => a - b);
 }
 
@@ -240,6 +239,7 @@ function startGame(keyword) {
   axios
       .post('http://localhost:5000/api/problem', {keyword})
       .then(response => {
+        storyIdea.value = response.data.story_idea;
         problem.right_text = response.data.right_text;
         problem.wrong_text = response.data.wrong_text;
         const n = problem.right_text.length;
@@ -426,6 +426,7 @@ button:hover {
   display: flex;
   align-items: center;
   font-size: 1.5em;
+  min-width: 100px;
   color: #ffffff;
 }
 
@@ -433,9 +434,13 @@ button:hover {
   margin-left: 5px;
 }
 
+.subject-container {
+  text-align: center;
+}
+
 .back-container {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .nav-btn {
@@ -497,6 +502,10 @@ button:hover {
 .book-sentence {
   cursor: pointer;
   transition: background-color 0.3s;
+}
+
+.book-sentence:hover {
+  outline: 2px solid #FF4F77;
 }
 
 .book-sentence.selected {
