@@ -109,7 +109,7 @@ class Prompts(Enum):
         - 글감은 명확하고 구체적인 개념, 사건, 제품, 이론 등이 될 수 있습니다.
         
         ## 3단계: 글 작성
-        - 선정된 글감에 대해 **500~550자, 15문장 분량**으로 글을 작성하세요.
+        - 선정된 글감에 대해 **최소 500자, 최대 1000자, 최소 15문장, 최대 20문장** 사이의 글을 작성하세요.
         - **사실 기반**으로 작성해야 하며, 논리적으로 문장이 연결되도록 한 문단으로 구성해야 합니다.
         - 독자가 글을 읽고 자연스럽게 이해할 수 있도록 작성해주세요.
         - 고등 학생 이상의 성인이 이해 할 수 있는 수준의 글을 작성해주세요.
@@ -117,8 +117,9 @@ class Prompts(Enum):
         
         ## 4단계: 올바른 문장과 잘못된 문장 생성
         - 작성한 문장을 문장 단위로 나누어 리스트(`right_text`)로 저장하세요.
-        - 동시에, 같은 구조를 유지하면서 **모든 문장을 사실과 다르게 바꾼 리스트(`wrong_text`)**를 생성하세요.
-          - 사실과 다르게 바꿀 때는 날짜, 인물, 사건, 특징 등을 변형하여 허위 정보를 만들되, 문장 구조는 원본과 유사해야 합니다.
+        - 같은 구조를 유지하면서 **right_text의 모든 문장을 사실과 다르게 바꾼 리스트(`wrong_text`)**를 생성하세요.
+            - 날짜, 인물, 사건, 특징 등을 허위 정보를 섞어 작성합니다. 
+            - 문장의 갯수와 구조는 원본과 동일해야 합니다.
 
         # 예시
         ```
@@ -211,7 +212,7 @@ def generate_problem(keyword: str) -> dict:
         SystemMessagePromptTemplate.from_template(Prompts.PROBLEM_PROMPT_SYSTEM.value),
         HumanMessagePromptTemplate.from_template(Prompts.PROBLEM_PROMPT_HUMAN.value),
     ]).partial(format_instructions=parser.get_format_instructions())
-    llm = get_chat_model(model=BedrockChatModel.NOVA_MICRO.value, temperature=0.3)
+    llm = get_chat_model(model=BedrockChatModel.NOVA_PRO.value, temperature=0.3)
     chain = problem_prompt | llm | parser
     try:
         llm_response = chain.invoke({"keyword": keyword}, config={"callbacks": [langfuse_handler]})
