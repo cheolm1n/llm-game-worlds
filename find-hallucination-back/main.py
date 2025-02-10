@@ -1,14 +1,12 @@
 import logging
 import os
+import sqlite3
 from enum import Enum
 from typing import List
 
-import sqlite3
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
@@ -17,6 +15,7 @@ from langchain.prompts.chat import (
 from langchain_aws import ChatBedrockConverse
 from langchain_core.output_parsers import JsonOutputParser
 from langfuse.callback import CallbackHandler
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -38,6 +37,7 @@ app.add_middleware(
 # ---------------------------
 DATABASE = "rankings.db"
 
+
 def init_db():
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
@@ -53,32 +53,40 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 # ----------------------------------------------------------------------
 # 1) Pydantic 모델 (LLM JSON 응답 파싱용)
 # ----------------------------------------------------------------------
-class KeywordsResponse(BaseModel):
+class GenerateKeywordsResponse(BaseModel):
     keywords: List[str] = Field(..., description="List of keywords")
 
-class ProblemResponse(BaseModel):
+
+class GenerateRightTextResponse(BaseModel):
     category: str = Field(..., description="주어진 분야")
     subject: str = Field(..., description="분야의 세부 주제")
     story_idea: str = Field(..., description="분야의 세부 주제를 바탕으로 정한 글감")
     right_text: List[str] = Field(
         ...,
-        description="키워드를 바탕으로 생성된 500자 이상, 15개 문장의 글을 문장 단위로 자른 리스트"
+        description="키워드를 바탕으로 생성된 500자 이상, 15개 문장의 글을 마침표 기준으로 문장으로 자른 리스트"
     )
+
+
+class GenerateWrongTextResponse(BaseModel):
     wrong_text: List[str] = Field(
         ...,
-        description="right_text의 문장 잘못된 내용으로 교체한 리스트"
+        description="입력으로 받은 문장을 거짓된 내용으로 교체한 문장들"
     )
+
 
 # 랭킹 저장 및 조회를 위한 모델
 class RankingRecord(BaseModel):
     nickname: str
     keyword: str
     elapsed_time: float
+
 
 # ----------------------------------------------------------------------
 # 2) 프롬프트 상수/enum
@@ -95,9 +103,9 @@ class Prompts(Enum):
         {format_instructions}
         """
     # 문제 생성
-    PROBLEM_PROMPT_SYSTEM = "당신은 전문적인 어시스턴트 입니다."
+    PROBLEM_PROMPT_SYSTEM = "당신은 창의적인 작가입니다."
     PROBLEM_PROMPT_HUMAN = """
-        분야는 {keyword} 입니다. 해당 분야에 대한 심층적인 글을 작성하려고 합니다. 이를 위해 다음과 같은 단계로 진행해주세요.
+        주어진 분야는 {keyword} 입니다. 해당 분야에 대한 심층적인 글을 작성하려고 합니다. 이를 위해 다음과 같은 단계로 진행해주세요.
         
         ## 1단계: 세부 주제 도출
         - 흥미롭고 의미 있는 세부 주제를 3~5개 제안해주세요.
@@ -114,12 +122,10 @@ class Prompts(Enum):
         - 독자가 글을 읽고 자연스럽게 이해할 수 있도록 작성해주세요.
         - 고등 학생 이상의 성인이 이해 할 수 있는 수준의 글을 작성해주세요.
         - 지나치게 전문화된 글은 이해하기 어려우니 비전문가도 이해할 수 있게 작성해주세요.
+        - `거의` 라는 단어를 남발하지 마세요.
         
-        ## 4단계: 올바른 문장과 잘못된 문장 생성
-        - 작성한 문장을 문장 단위로 나누어 리스트(`right_text`)로 저장하세요.
-        - 같은 구조를 유지하면서 **right_text의 모든 문장을 사실과 다르게 바꾼 리스트(`wrong_text`)**를 생성하세요.
-            - 날짜, 인물, 사건, 특징 등을 허위 정보를 섞어 작성합니다. 
-            - 문장의 갯수와 구조는 원본과 동일해야 합니다.
+        ## 4단계: 올바른 문장 생성
+        - 작성한 문장을 문장 단위(마침표 기준)로 나누어 리스트(`right_text`)로 저장하세요.
 
         # 예시
         ```
@@ -133,12 +139,6 @@ class Prompts(Enum):
             "플레이어는 '금지된 땅'이라 불리는 미지의 영역에서 헌터로서 거대한 몬스터를 사냥하게 된다.",
             "...",
             "게임은 PlayStation 5, Xbox Series X/S, PC 등 다양한 플랫폼에서 이용 가능하다."
-          ],
-          "wrong_text": [
-            "'몬스터 헌터 와일즈'는 유비소프트가 개발한 스포츠 게임으로, 2023년 10월 15일에 출시되었다.",
-            "플레이어는 '열린 평원'이라 불리는 도시 지역에서 동물들과 경주하게 된다.",
-            "...",
-            "게임은 Nintendo Switch에서만 이용 가능하다."
           ]
         }}
         ```
@@ -148,12 +148,36 @@ class Prompts(Enum):
         {format_instructions}
         """
 
+    GENERATE_WRONG_TEXT_SYSTEM = """
+    당신은 창의적인 작가입니다.
+    주어진 문장 리스트와 같은 JSON 구조를 유지하면서 각 문장을 사실과 다르게 거짓을 섞어 새로 작성합니다.
+    거짓을 섞어 작성한 문장은 JSON 포맷에 맞춰 출력하세요.
+
+    ## 주의사항
+    - 문장의 갯수와 순서는 원본과 동일해야 합니다.
+    - 날짜, 인물, 사건, 특징 등을 허위 정보를 섞어 작성합니다.
+    - 교묘하게 거짓을 섞어주세요.
+    - 논리적으로 모순이되는 문장을 섞어주세요.
+    - 최종 결과만 반드시 JSON 형식으로 출력하세요:
+
+    ## JSON 출력형식
+    {format_instructions}
+    """
+    GENERATE_WRONG_TEXT_HUMAN = """
+    내용을 바꿀 문장:
+    ```
+    {right_text}
+    ```
+    """
+
+
 # ----------------------------------------------------------------------
 # 3) BedrockChatModel Enum (예시)
 # ----------------------------------------------------------------------
 class BedrockChatModel(Enum):
     NOVA_PRO = "us.amazon.nova-pro-v1:0"
     NOVA_MICRO = "us.amazon.nova-micro-v1:0"
+
 
 # ----------------------------------------------------------------------
 # 4) get_chat_model (Stub)
@@ -173,6 +197,7 @@ def get_chat_model(model: str, temperature: float):
             region_name="us-west-2",
         )
 
+
 langfuse_handler = CallbackHandler(
     public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
     secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
@@ -180,12 +205,13 @@ langfuse_handler = CallbackHandler(
     tags=["find-hallucination"]
 )
 
+
 # ----------------------------------------------------------------------
 # 5) 키워드 생성 함수
 # ----------------------------------------------------------------------
 def generate_keywords() -> dict:
     state = {}
-    parser = JsonOutputParser(pydantic_object=KeywordsResponse)
+    parser = JsonOutputParser(pydantic_object=GenerateKeywordsResponse)
     keywords_prompt = ChatPromptTemplate.from_messages([
         SystemMessagePromptTemplate.from_template(Prompts.KEYWORDS_PROMPT_SYSTEM.value),
         HumanMessagePromptTemplate.from_template(Prompts.KEYWORDS_PROMPT_HUMAN.value),
@@ -201,18 +227,19 @@ def generate_keywords() -> dict:
         state["keywords"] = ["ChatGPT", "AI 규제", "우주 탐사"]
     return state
 
+
 # ----------------------------------------------------------------------
 # 6) 문제 생성 함수
 # ----------------------------------------------------------------------
-def generate_problem(keyword: str) -> dict:
+def generate_right_text(keyword: str) -> dict:
     state = {}
 
-    parser = JsonOutputParser(pydantic_object=ProblemResponse)
+    parser = JsonOutputParser(pydantic_object=GenerateRightTextResponse)
     problem_prompt = ChatPromptTemplate.from_messages([
         SystemMessagePromptTemplate.from_template(Prompts.PROBLEM_PROMPT_SYSTEM.value),
         HumanMessagePromptTemplate.from_template(Prompts.PROBLEM_PROMPT_HUMAN.value),
     ]).partial(format_instructions=parser.get_format_instructions())
-    llm = get_chat_model(model=BedrockChatModel.NOVA_PRO.value, temperature=0.3)
+    llm = get_chat_model(model=BedrockChatModel.NOVA_PRO.value, temperature=0.7)
     chain = problem_prompt | llm | parser
     try:
         llm_response = chain.invoke({"keyword": keyword}, config={"callbacks": [langfuse_handler]})
@@ -221,6 +248,26 @@ def generate_problem(keyword: str) -> dict:
     except Exception as e:
         logging.error(f"[generate_problem] error: {e}")
     return state
+
+
+def generate_wrong_text(right_text: List[str]) -> dict:
+    state = {}
+
+    parser = JsonOutputParser(pydantic_object=GenerateWrongTextResponse)
+    problem_prompt = ChatPromptTemplate.from_messages([
+        SystemMessagePromptTemplate.from_template(Prompts.GENERATE_WRONG_TEXT_SYSTEM.value),
+        HumanMessagePromptTemplate.from_template(Prompts.GENERATE_WRONG_TEXT_HUMAN.value),
+    ]).partial(format_instructions=parser.get_format_instructions())
+    llm = get_chat_model(model=BedrockChatModel.NOVA_PRO.value, temperature=0.7)
+    chain = problem_prompt | llm | parser
+    try:
+        llm_response = chain.invoke({"right_text": right_text}, config={"callbacks": [langfuse_handler]})
+        state = llm_response
+        logging.info(f"[generate_wrong_text]: {state}")
+    except Exception as e:
+        logging.error(f"[generate_wrong_text] error: {e}")
+    return state
+
 
 # ----------------------------------------------------------------------
 # 7) API 엔드포인트
@@ -232,13 +279,23 @@ async def api_keywords():
     # result = {"keywords":["역사적 사건","문화적 관습","과학적 원리","문학적 작품","지리적 특징"]}
     return result
 
+
 @app.post("/api/problem")
 async def api_problem(request: Request):
     data = await request.json()
     keyword = data.get("keyword", "")
     if not keyword:
         raise HTTPException(status_code=400, detail="keyword is required")
-    result = generate_problem(keyword)
+    result = generate_right_text(keyword)
+
+    right_text = result["right_text"]
+
+    # 토큰 수 제약으로 인해 wrong 텍스트 생성 분리
+    wrong_text_response = generate_wrong_text(right_text)
+    wrong_text = wrong_text_response['wrong_text']
+
+    result["wrong_text"] = wrong_text
+
     # TEST 용 stub
     # result = {
     #     "category": "과학적 원리",
@@ -281,6 +338,7 @@ async def api_problem(request: Request):
     # }
     return result
 
+
 # ---------------------------
 # 8) 랭킹 저장 API (POST) – 10위 초과 시 하위 기록 삭제
 # ---------------------------
@@ -300,6 +358,7 @@ async def save_ranking(record: RankingRecord):
         conn.commit()
     conn.close()
     return {"status": "ok"}
+
 
 # ---------------------------
 # 9) 랭킹 조회 API (GET) – 순위, 닉네임, 키워드, 걸린 시간 반환
@@ -321,9 +380,11 @@ async def get_rankings():
         })
     return {"rankings": rankings_list}
 
+
 # ----------------------------------------------------------------------
 # 10) Uvicorn 실행
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=5000, log_level="info")
