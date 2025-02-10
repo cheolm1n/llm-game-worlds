@@ -358,6 +358,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Pretendard 폰트 적용 */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./assets/Pretendard-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 /* 화면 전환 페이드 효과 */
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.5s ease;
@@ -367,12 +375,9 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-/* Google Fonts - Open Sans */
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
-
 #app {
   background: #000000;
-  font-family: 'Open Sans', sans-serif;
+  font-family: 'Pretendard', sans-serif;
   color: #ffffff;
   padding: 20px;
   min-height: 100vh;
@@ -400,7 +405,7 @@ button {
   border-radius: 20px;
   cursor: pointer;
   transition: transform 0.2s;
-  font-family: 'Open Sans', sans-serif;
+  font-family: 'Pretendard', sans-serif;
   font-weight: bold;
 }
 
@@ -440,7 +445,7 @@ button:hover {
   padding: 10px 20px;
   border-radius: 20px;
   cursor: pointer;
-  font-family: 'Open Sans', sans-serif;
+  font-family: 'Pretendard', sans-serif;
   font-weight: bold;
   font-size: 1.2em;
 }
