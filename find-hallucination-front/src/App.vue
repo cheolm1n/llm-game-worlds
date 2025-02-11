@@ -16,7 +16,7 @@
         <h1>틀린 글 찾기 챌린지</h1>
         <!-- 닉네임 입력 -->
         <div class="nickname-input">
-          <input type="text" v-model="nickname" placeholder="닉네임을 입력하세요" />
+          <input type="text" v-model="nickname" placeholder="닉네임을 입력하세요"/>
         </div>
         <!-- 랭킹보기 버튼 -->
         <div class="ranking-btn-container">
@@ -122,6 +122,7 @@
 import {onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
 import axios from 'axios'
 import bgmSrc from './assets/bgm.mp3'
+import {API_BASE_URL} from './config'
 
 // 미리 정의한 색상 팔레트 (추가 색상 포함)
 const colorPalette = [
@@ -212,7 +213,7 @@ function getRandomSample(n, count) {
 function fetchKeywords() {
   state.value = 'loading';
   axios
-      .get('http://localhost:5000/api/keywords')
+      .get(API_BASE_URL+'/api/keywords')
       .then(response => {
         keywords.value = response.data.keywords;
         // 키워드 수 만큼 고유한 색상 할당
@@ -237,7 +238,7 @@ function startGame(keyword) {
   selectedKeyword.value = keyword;
   state.value = 'loading';
   axios
-      .post('http://localhost:5000/api/problem', {keyword})
+      .post(API_BASE_URL + '/api/problem', {keyword})
       .then(response => {
         storyIdea.value = response.data.story_idea;
         problem.right_text = response.data.right_text;
@@ -286,7 +287,7 @@ function submitAnswer() {
   // 정답인 경우 랭킹 저장 API 호출 (닉네임, 키워드, 걸린 시간)
   if (correctCount.value === totalErrors.value) {
     const timeTaken = (gameEndTime.value - gameStartTime.value) / 1000;
-    axios.post('http://localhost:5000/api/rankings', {
+    axios.post(API_BASE_URL+'/api/rankings', {
       nickname: nickname.value,
       keyword: selectedKeyword.value,
       elapsed_time: timeTaken
@@ -337,7 +338,7 @@ function goHome() {
 /* --- 랭킹보기: 백엔드에서 순위 데이터 가져오기 --- */
 function viewRanking() {
   state.value = 'loading';
-  axios.get('http://localhost:5000/api/rankings')
+  axios.get(API_BASE_URL+'/api/rankings')
       .then(response => {
         rankings.value = response.data.rankings;
         state.value = 'ranking';
@@ -379,7 +380,6 @@ onBeforeUnmount(() => {
   background: #000000;
   font-family: 'Pretendard', sans-serif;
   color: #ffffff;
-  padding: 20px;
   min-height: 100vh;
   height: 100%;
   display: flex;
@@ -387,8 +387,13 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   position: relative;
+  margin: 0 !important;
+  padding: 0  !important;
 }
-
+html, body {
+  margin: 0 !important;
+  padding: 0  !important;
+}
 /* 제목 스타일 */
 h1 {
   font-size: 2.5em;
